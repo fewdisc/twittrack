@@ -1,0 +1,111 @@
+#!/usr/bin/env ruby
+
+$: << '.'
+
+begin
+  require 'data_mapper'
+  require 'lib/data'
+  require 'logger'
+  require 'nokogiri'
+  require 'optparse'
+  require 'sqlite3'
+  require 'twitter'
+  require 'pp'
+rescue LoadError => e
+  puts "think you've got a gem problem old boy: #{e}"
+  exit 1
+end
+
+# Derive our root directory
+$root_dir = File.expand_path('..', __FILE__)
+
+# Set up logging
+LOGGER = Logger.new(STDERR)
+
+# set up our database
+begin
+  DataMapper.setup(:default, "sqlite:///#{$root_dir}/db/twittrack.db")
+  DataMapper::Model.raise_on_save_failure = true
+end
+
+# Handle arguments
+options = {
+  :setup => false,
+  :update => false,
+  :verbose => false
+}
+
+optparse = OptionParser.new do |o|
+  o.banner = "Usage: twittrack [options]"
+  o.on('-s', '--setup', "Set up database") do |f|
+      options[:setup] = true
+  end
+  o.on('-u', '--update', "Update database schema") do |f|
+      options[:update] = true
+  end
+  o.on('-v', '--verbose', "Be verbose") do |f|
+      options[:verbose] = true
+  end
+  o.on_tail('-h', '--help', "Show this help messages.") { puts o; exit }
+  o.parse!
+end
+
+if options[:setup]
+  LOGGER.info "Resetting database"
+  DataMapper.auto_migrate!
+  exit
+end
+
+if options[:update]
+  LOGGER.info "Updating database"
+  DataMapper.auto_upgrade!
+  exit
+end
+
+
+# finally, we take a username argument
+if ARGV.length != 1
+  puts "missing Twitter screen_name argument"
+  exit 1
+end
+
+screen_name = ARGV.shift
+
+# configure our Twitter client
+Twitter.configure do |config|
+  config.consumer_key       = ''
+  config.consumer_secret    = ''
+  config.oauth_token        = ''
+  config.oauth_token_secret = ''
+end
+
+# get a user's most recent id
+since_id = Tweet.max(:id, :conditions => [ 'screen_name = ?', screen_name ])
+since_id ||= nil
+
+# set up our options
+if since_id
+  puts "since_id is #{since_id}"
+  options = { :count => 200, :since_id => since_id }
+else
+  puts "since_id is not set"
+  options = { :count => 200 }
+end  
+
+# loop through the user's status
+Twitter.user_timeline(screen_name, options).each do |status|
+  #pp status
+  client = Nokogiri::HTML(status.source).css("a")[0].text
+  begin
+    tweet = Tweet.create(
+        :id => status.id,
+        :text => status.text,
+        :created_at => status.created_at,
+        :source => client,
+        :screen_name => screen_name
+    )
+    if !tweet.save
+      puts "failed: #{tweet.errors.inspect}"
+    end
+  end
+end
