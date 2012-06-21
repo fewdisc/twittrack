@@ -1,0 +1,19 @@
+I know when I use Twitter, typically during the day it's on my iPad or PC at work, then during the evening I move to my iPhone or Mac.
+
+I was thinking that you could start to build up an idea of where people are just by looking at their tweets, the source of them and the time of day.
+
+This could be useful, perhaps in a social engineering engagement or maybe just to be nosey!
+
+== steps ==
+
+1. clone repo
+2. initialise the sqlite db: ./twittrack --setup
+3. run it with a twitter handle as the argument:
+
+./twittrack marcwickenden
+
+== then what ==
+At the moment you will need to query the sqlite db manually
+
+sqlite3 db/twittrack.db
+SELECT created_at, source from tweets where screen_name = 'marcwickenden'
